@@ -1,0 +1,349 @@
+use core::fmt; //this is the rust library
+use spin::{Mutex,Lazy};
+use volatile::Volatile;
+
+//customise color
+#[allow(dead_code)]
+#[derive(Debug,Clone,Copy,PartialEq,Eq)]
+#[repr(u8)]
+pub enum Color{
+    Black = 0,
+    Blue = 1,
+    Green =2,
+    Red = 3,
+    LightGreen = 4,
+    Pink = 5,
+    Yellow = 6,
+    White = 7,
+}
+
+//Combination of color
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct ColorCode(u8);
+
+impl ColorCode{
+    pub fn new(foreground: Color, background: Color) -> ColorCode{
+        ColorCode((background as u8)<<4|(foreground as u8))
+    }
+}
+
+//Each character on the screen
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(C)]
+struct ScreenChar{
+    ascii_character: u8,
+    color_code : ColorCode,
+}
+
+//create buffer area
+const BUFFER_HEIGHT: usize = 25;
+const BUFFER_WIDTH: usize = 80;
+
+#[repr(transparent)]
+pub struct Buffer{
+    chars:[[Volatile<ScreenChar>; BUFFER_WIDTH];BUFFER_HEIGHT],
+}
+
+//the true writer
+pub struct Writer{
+    pub column_position: usize,
+    pub color_code: ColorCode,
+    //pub buffer: &'static mut Buffer,
+}
+
+impl Writer{
+    pub fn write_byte(&mut self, byte:u8){
+        match byte{
+            b'\n' => self.new_line(),
+            byte => {
+                if self.column_position >= BUFFER_WIDTH{
+                    self.new_line();
+                }
+                
+                let row = BUFFER_HEIGHT -1;
+                let col = self.column_position;
+
+                let color_code = self.color_code;
+
+                let buffer = unsafe { &mut *(0xb8000 as *mut Buffer) };
+
+                buffer.chars[row][col].write(ScreenChar{
+                    ascii_character:byte,
+                    color_code,
+                });
+                self.column_position += 1;
+            }
+        }
+    }
+
+    fn new_line(&mut self){
+        let buffer = unsafe { &mut *(0xb8000 as *mut Buffer) };
+        for row in 1..BUFFER_HEIGHT{
+            for col in 0..BUFFER_WIDTH{
+                let character = buffer.chars[row][col].read();
+                buffer.chars[row-1][col].write(character);
+            }
+        }
+        self.clear_row(BUFFER_HEIGHT -1);
+        self.column_position = 0;
+    }
+
+    fn clear_row(&mut self, row:usize){
+        let buffer = unsafe { &mut *(0xb8000 as *mut Buffer) };
+
+        let blank = ScreenChar{
+            ascii_character: b' ',
+            color_code: self.color_code,
+        };
+        for col in 0..BUFFER_WIDTH{
+                buffer.chars[row][col].write(blank);
+        }
+    }
+
+    pub fn write_string(&mut self, s: &str){
+        for byte in s.bytes(){
+            match byte{
+                0x20..=0x7e | b'\n' => self.write_byte(byte),
+                _ => self.write_byte(0xfe),
+            }
+        }
+    }
+}
+
+//for rust !write socket
+impl fmt::Write for Writer {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.write_string(s);
+        Ok(())
+    }
+}
+
+//the socket!!!
+pub static mut WRITER: Writer = Writer {
+    column_position: 0,
+    color_code: ColorCode(0x02), // 0x02 = Green on Black
+};
+
+//define the macro!
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
+}
+
+#[doc(hidden)]
+pub fn _print(args:fmt::Arguments){
+use core::fmt::Write;
+    // 🛑 暴力修改：使用 unsafe 块来访问 WRITER
+    unsafe {
+        WRITER.write_fmt(args).unwrap();
+    }
+}
+
+
+=================================================================================
+
+const VGA_BUFFER: *mut u8 = 0xb8000 as *mut u8;
+const BUFFER_WIDTH: usize = 80;
+const BUFFER_HEIGHT:usize = 25;
+
+static mut WRITER_COLUMN: usize = 0;
+static mut WRITER_ROW: usize = BUFFER_HEIGHT -1;
+
+const COLOR_BYTE: u8 = 0x02;
+
+pub fn print(s:&str){
+    for byte in s.bytes(){
+        print_byte(byte);
+    }
+}
+
+fn print_byte(byte:u8){
+    unsafe {
+        match byte{
+            b'\n' => new_line(),
+            byte => {
+                if WRITER_COLUMN >= BUFFER_WIDTH{
+                    new_line();
+                }
+
+                let offset = WRITER_ROW * BUFFER_WIDTH *2 + WRITER_COLUMN *2;
+
+                core::ptr::write_volatile(VGA_BUFFER.add(offset),byte);
+                core::ptr::write_volatile(VGA_BUFFER.add(offset+1),COLOR_BYTE);
+
+                WRITER_COLUMN +=1;
+            }
+        }
+    }
+}
+
+fn new_line(){
+    unsafe{
+        for row in 1..BUFFER_HEIGHT{
+            for col in 0..BUFFER_WIDTH{
+                let from_offset = row * BUFFER_WIDTH *2 + col *2;
+                let to_offset = (row -1) * BUFFER_WIDTH * 2 + col * 2;
+
+                let char = core::ptr::read_volatile(VGA_BUFFER.add(from_offset));
+                let color = core::ptr::read_volatile(VGA_BUFFER.add(from_offset+1));
+
+                core::ptr::write_volatile(VGA_BUFFER.add(to_offset),char);
+                core::ptr::write_volatile(VGA_BUFFER.add(to_offset +1),color);
+            }
+        }
+
+        clear_row(BUFFER_HEIGHT-1);
+        WRITER_COLUMN = 0;
+    }
+}
+
+fn clear_row(row:usize){
+    unsafe {
+        for col in 0..BUFFER_WIDTH{
+            let offset = row * BUFFER_WIDTH *2 + col *2;
+            core::ptr::write_volatile(VGA_BUFFER.add(offset),b' ');
+            core::ptr::write_volatile(VGA_BUFFER.add(offset +1), COLOR_BYTE);
+        }
+    }
+}
+
+
+
+============
+
+use core::fmt;
+
+const VGA_BUFFER: *mut u8 = 0xb8000 as *mut u8;
+const BUFFER_WIDTH:usize = 80;
+const BUFFER_HEIGHT: usize = 25;
+const COLOR_BYTE: u8 = 0x02;
+
+static mut WRITER_COLUMN: usize = 0;
+static mut WRITER_ROW: usize = BUFFER_HEIGHT -1;
+
+pub fn print(s:&str){
+    for byte in s.bytes(){
+        print_byte(byte);
+    }
+}
+
+fn print_byte(byte:u8){
+    unsafe{
+        match byte {
+            b'\n' => new_line(),
+            byte => {
+                if WRITER_COLUMN >= BUFFER_WIDTH{
+                    new_line();
+                }
+
+                let offset = WRITER_ROW * BUFFER_WIDTH  * 2 + WRITER_COLUMN *2;
+
+                core::ptr::write_volatile(VGA_BUFFER.add(offset), byte);
+                core::ptr::write_volatile(VGA_BUFFER.add(offset +1),COLOR_BYTE);
+
+                WRITER_COLUMN += 1;
+            }
+        }
+    }
+}
+
+fn new_line(){
+    unsafe {
+        for row in 1..BUFFER_HEIGHT{
+            for col in 0..BUFFER_WIDTH{
+                let from_offset = row * BUFFER_WIDTH *2 + col *2;
+                let to_offset = (row-1) * BUFFER_WIDTH *2 + col *2;
+
+                let char = core::ptr::read_volatile(VGA_BUFFER.add(from_offset));
+                let color = core::ptr::read_volatile(VGA_BUFFER.add(from_offset + 1));
+
+                core::ptr::write_volatile(VGA_BUFFER.add(to_offset),char);
+                core::ptr::write_volatile(VGA_BUFFER.add(to_offset+1),color);
+            } 
+        }
+        clear_row(BUFFER_HEIGHT -1);
+        WRITER_COLUMN = 0;
+    }
+}
+
+fn clear_row(row:usize){
+    unsafe{
+        for col in 0..BUFFER_WIDTH{
+            let offset = row * BUFFER_WIDTH *2 + col *2;
+            core::ptr::write_volatile(VGA_BUFFER.add(offset),b' ');
+            core::ptr::write_volatile(VGA_BUFFER.add(offset+1),COLOR_BYTE);
+        }
+    }
+}
+
+
+pub struct Writer;
+
+impl fmt::Write for Writer{
+    fn write_str(&mut self, s: &str) -> fmt::Result{
+        print(s);
+        Ok(())
+    }
+}
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
+}
+
+// 4. 胶水函数：把宏传来的参数转给 Writer
+#[doc(hidden)]
+pub fn _print(args: fmt::Arguments) {
+    use core::fmt::Write;
+    // 现场创建一个 Writer，反正它里面没数据，只是个工具人
+    let mut writer = Writer; 
+    writer.write_fmt(args).unwrap();
+}
+
+++++++++++++ main.rust
+
+
+    let mut keyboard = Keyboard::new(
+        ScancodeSet1::new(),
+        layouts::Us104Key,
+        HandleControl::Ignore
+    );
+
+    let mut port_60 = Port::new(0x60);
+    let mut port_64 = Port::new(0x64);
+
+    loop {
+        unsafe{
+            let status: u8 = port_64.read();
+
+            let is_data_ready = (status & 1) != 0;
+
+            if is_data_ready {
+                let scancode: u8 = port_60.read();
+
+                if let Ok(Some(key_event)) = keyboard.add_byte(scancode){   
+                    if let Some(key) = keyboard.process_keyevent(key_event){
+                        match key{
+                            DecodedKey::Unicode(character) => print!("{}", character),
+                            DecodedKey::RawKey(key) => print!("{:?}",key),
+                        }
+                    }
+                }
+            }
+        }
+
+
+    }

@@ -1,0 +1,21 @@
+/target
+
+
+# .gitignore
+
+# 1. 忽略 Rust 编译产生的巨大文件夹
+/target/
+
+# 2. 忽略锁文件 (看个人习惯，库项目通常忽略，但 OS 这种二进制项目建议保留)
+# Cargo.lock
+
+# 3. 忽略你的虚拟机硬盘和二进制镜像
+**/*.bin
+**/*.vdi
+**/*.img
+**/*.iso
+
+# 4. 忽略 IDE 配置文件
+.vscode/
+.idea/
+*.swp
