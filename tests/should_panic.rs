@@ -16,7 +16,6 @@ pub extern "C" fn _start() -> ! {
 // 1. 直接手动调用测试函数
     should_fail();
 
-    // 2. 如果函数居然没挂（没 Panic），说明测试失败了
     serial_println!("[test did not panic]");
     exit_qemu(QemuExitCode::Failed);
     loop {}
