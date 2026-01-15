@@ -9,7 +9,7 @@
 
 use core::panic::PanicInfo;
 use x86_64::instructions::port::Port;
-use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+//use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use lzh_os::println;
 use lzh_os::serial_println;
 
