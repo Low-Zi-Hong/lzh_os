@@ -10,7 +10,7 @@ panic = "abort"
 panic = "abort"
 
 [dependencies]
-bootloader = "0.9.23"      # 帮我们启动系统的老司机
+bootloader = {version = "0.9", features = ["map_physical_memory"]}    # 帮我们启动系统的老司机
 x86_64 = "0.14.10"
 pc-keyboard = "0.7.0"
 volatile = "0.2.6"
