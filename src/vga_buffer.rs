@@ -156,7 +156,7 @@ pub fn _print(args:fmt::Arguments){
         WRITER.lock().write_fmt(args).unwrap();
 
         //for tablet view on com1
-        crate::serial::_print(args);
+        //crate::serial::_print(args);
 
     });
 }
