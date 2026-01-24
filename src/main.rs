@@ -9,23 +9,23 @@
 
 use core::panic::PanicInfo;
 use bootloader::bootinfo;
-use bootloader::bootinfo::MemoryRegion;
 use bootloader::entry_point;
 use lzh_os::memory::BootInfoFrameAllocator;
-//use x86_64::instructions::port::Port;
-//use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 use lzh_os::println;
 use lzh_os::serial_println;
 use bootloader::BootInfo;
-use x86_64::structures::paging::Page;
+use alloc::{boxed::Box,vec,vec::Vec,rc::Rc};
+
+extern crate alloc;
 
 entry_point!(kernel_main);
 
 fn kernel_main(boot_info : &'static BootInfo) -> ! {
+    use lzh_os::allocator;
     use x86_64::VirtAddr;
     use lzh_os::memory;
 
-    println!("Hello World1!");
+    println!("Hello World!");
 
     //handle interrupts
     lzh_os::init();
@@ -35,15 +35,17 @@ fn kernel_main(boot_info : &'static BootInfo) -> ! {
     let mut mapper = unsafe {memory::init(phys_mem_offset)};
     let mut frame_allocator = unsafe {BootInfoFrameAllocator::init(&boot_info.memory_map)};
 
+    //init heap
+    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap init fail!");
 
-    //map unuse page
-    let page = Page::containing_address(VirtAddr::new(0));
-    memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
+    ////map unuse page
+    //let page = Page::containing_address(VirtAddr::new(0));
+    //memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
 
-    //write string 'New!' to tge screen through new mapping!
-    let page_ptr: *mut u64 = page.start_address().as_mut_ptr();
-    unsafe {page_ptr.offset(400).write_volatile(0x_f921_f077_5265_804e);}
-    //0x4e = 'N' 0x65 e 0x77 w 0x21 ! 0xf0 白底黑字
+    ////write string 'New!' to tge screen through new mapping!
+    //let page_ptr: *mut u64 = page.start_address().as_mut_ptr();
+    //unsafe {page_ptr.offset(400).write_volatile(0x_f921_f077_5265_804e);}
+    ////0x4e = 'N' 0x65 e 0x77 w 0x21 ! 0xf0 白底黑字
 
     use bootinfo::MemoryRegionType;
         println!("Memory map");
@@ -52,6 +54,21 @@ fn kernel_main(boot_info : &'static BootInfo) -> ! {
                 println!("{:?}",r);
             }
         }
+
+    let heap_value = Box::new(41);
+    println!("heap value at {:p}",heap_value);
+
+    let mut vec = Vec::new();
+    for i in 0..500 {
+        vec.push(i);
+    }
+    println!("Vec at {:p}",vec.as_slice());
+
+    let reference_counted = Rc::new(vec![1,2,3]);
+    let cloned_reference = reference_counted.clone();
+    println!("current reference count is {}", Rc::strong_count(&cloned_reference));
+    core::mem::drop(reference_counted);
+    println!("reference count is {} now", Rc::strong_count(&cloned_reference));
 
     //testing
     #[cfg(test)]
