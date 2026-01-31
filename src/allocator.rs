@@ -40,11 +40,29 @@ impl <A> Locked<A> {
 
 
 pub mod bump;
+pub mod linked_list;
+pub mod fixed_size_block;
 
+#[cfg(feature = "_BUMP_")]
 use bump::BumpAllocator;
 
+#[cfg(feature = "_LINKEDLIST_")]
+use linked_list::LinkedListAllocator;
+
+#[cfg(feature = "_FIXEDSIZEBLOCK_")]
+use linked_list::LinkedListAllocator;
+
+#[cfg(feature = "_BUMP_")]
 #[global_allocator]
-static ALLOCATOR: Locked<BumpAllocator> = Locked::new(BumpAllocator::new());
+static ALLOCATOR: Locked<BumpAllocator> = Locked::new(BumpAllocator::new()); //bumb.rs
+
+#[cfg(feature = "_LINKEDLIST_")]
+#[global_allocator]
+static ALLOCATOR: Locked<LinkedListAllocator> = Locked::new(LinkedListAllocator::new()); //linked_list.rs
+
+#[cfg(feature = "_FIXEDSIZEBLOCK_")]
+#[global_allocator]
+static ALLOCATOR: Locked<FixedSizeBlockAllocator> = Locked::new(FixedSizeBlockAllocator::new()); //fixed_size_block.rs
 
 //heap
 pub const HEAP_START: usize = 0x_4444_4444_0000;
@@ -55,6 +73,9 @@ use x86_64::{structures::paging::{
 },
 VirtAddr
 };
+
+#[cfg(feature = "_FIXEDSIZEBLOCK_")]
+use crate::allocator::fixed_size_block::FixedSizeBlockAllocator;
 
 pub fn init_heap (
     mapper: &mut impl Mapper<Size4KiB>, 

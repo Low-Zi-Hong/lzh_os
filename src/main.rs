@@ -27,6 +27,16 @@ fn kernel_main(boot_info : &'static BootInfo) -> ! {
 
     println!("Hello World!");
 
+    //allocator type
+    #[cfg(feature = "_BUMP_")]
+    println!("Using Bump allocator!");
+
+    #[cfg(feature = "_LINKEDLIST_")]
+    println!("Using Linked List Allocator!");
+
+    #[cfg(feature = "_FIXEDSIZEBLOCK_")]
+    println!("Using Fixed Size Block Allocator!");
+
     //handle interrupts
     lzh_os::init();
 
@@ -57,18 +67,18 @@ fn kernel_main(boot_info : &'static BootInfo) -> ! {
 
     let heap_value = Box::new(41);
     println!("heap value at {:p}",heap_value);
-
+    
     let mut vec = Vec::new();
     for i in 0..500 {
         vec.push(i);
     }
-    println!("Vec at {:p}",vec.as_slice());
+    //println!("Vec at {:p}",vec.as_slice());
 
     let reference_counted = Rc::new(vec![1,2,3]);
     let cloned_reference = reference_counted.clone();
-    println!("current reference count is {}", Rc::strong_count(&cloned_reference));
+    //println!("current reference count is {}", Rc::strong_count(&cloned_reference));
     core::mem::drop(reference_counted);
-    println!("reference count is {} now", Rc::strong_count(&cloned_reference));
+    //println!("reference count is {} now", Rc::strong_count(&cloned_reference));
 
     //testing
     #[cfg(test)]

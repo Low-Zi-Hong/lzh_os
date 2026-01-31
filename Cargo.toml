@@ -45,3 +45,10 @@ test-args = [
 ]
 test-success-exit-code = 33
 test-timeout = 300 
+
+[features]
+_BUMP_ = []
+_LINKEDLIST_ = []
+_FIXEDSIZEBLOCK_ = []
+
+default = ["_FIXEDSIZEBLOCK_"]
